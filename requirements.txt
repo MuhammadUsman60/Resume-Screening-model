@@ -6,3 +6,4 @@ numpy
 joblib
 pandas
 xgboost
+PyMuPDF==1.23.9
