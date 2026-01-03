@@ -15,10 +15,24 @@ app = Flask(__name__)
 
 
 import nltk
-nltk.download('punkt')
-nltk.download('stopwords')
-nltk.download('wordnet')
-nltk.download('punkt_tab')
+# nltk.download('punkt')
+# nltk.download('stopwords')
+# nltk.download('wordnet')
+# nltk.download('punkt_tab')
+
+def ensure_nltk():
+    resources = [
+        'tokenizers/punkt',
+        'corpora/stopwords',
+        'corpora/wordnet'
+    ]
+    for r in resources:
+        try:
+            nltk.data.find(r)
+        except LookupError:
+            nltk.download(r.split('/')[-1])
+
+ensure_nltk()
 
 
 # Initialize stopwords and lemmatizer
@@ -26,14 +40,29 @@ stop_words = set(stopwords.words('english'))
 lemmatizer = WordNetLemmatizer()
 
 # Load your pre-trained model and vectorizer
-stacked_model = joblib.load('./model/stacked_resume_model_V2.pkl')
-tfidf = joblib.load('./model/tfidf_vectorizer_V2.pkl')
+# stacked_model = joblib.load('./model/stacked_resume_model_V2.pkl')
+def load_model(path):
+    try:
+        return joblib.load(path)
+    except Exception as e:
+        print(f"❌ Failed loading {path}: {e}")
+        return None
 
-# Load models for rocommend For job
-vectorizer = joblib.load('./model/Recommender/tfidf_vectorizer.pkl')
-svd = joblib.load('./model/Recommender/svd_reducer.pkl')
-kmeans = joblib.load('./model/Recommender/kmeans_model.pkl')
-normalizer = joblib.load('./model/Recommender/normalizer.pkl')
+stacked_model = load_model('./model/stacked_resume_model_V2.pkl')
+tfidf = load_model('./model/tfidf_vectorizer_V2.pkl')
+
+vectorizer = load_model('./model/Recommender/tfidf_vectorizer.pkl')
+svd = load_model('./model/Recommender/svd_reducer.pkl')
+kmeans = load_model('./model/Recommender/kmeans_model.pkl')
+normalizer = load_model('./model/Recommender/normalizer.pkl')
+
+# tfidf = joblib.load('./model/tfidf_vectorizer_V2.pkl')
+
+# # Load models for rocommend For job
+# vectorizer = joblib.load('./model/Recommender/tfidf_vectorizer.pkl')
+# svd = joblib.load('./model/Recommender/svd_reducer.pkl')
+# kmeans = joblib.load('./model/Recommender/kmeans_model.pkl')
+# normalizer = joblib.load('./model/Recommender/normalizer.pkl')
 
 
 # Text preprocessing function
@@ -135,13 +164,53 @@ def recommend_job_simple(resume_text, job_desc_text):
         print(f"Error: {str(e)}")
         raise
 
+# @app.route('/predict', methods=['POST'])
+# def predict():
+#     try:
+#         # Get resume and job description from request
+#         data = request.json
+#         resume_text = data['resume']
+#         job_desc_text = data['job_description']
+        
+#         # Preprocess texts
+#         cleaned_resume = preprocess_text(resume_text)
+#         cleaned_job_desc = preprocess_text(job_desc_text)
+        
+#         # Vectorize
+#         combined = [cleaned_resume, cleaned_job_desc]
+#         vectors = tfidf.transform(combined)
+        
+#         # Calculate similarity
+#         similarity = cosine_similarity(vectors[0], vectors[1])[0][0]
+       
+#         # Prepare input for model
+#         x_input = np.hstack((vectors[0].toarray(), np.array(similarity).reshape(1, -1)))
+        
+#         # Predict
+#         predicted_score = stacked_model.predict(x_input)[0]
+        
+#         return jsonify({
+#             'matched_score': float(predicted_score*100),
+#             'similarity_score': float(similarity)
+#         })
+
+#     except Exception as e:
+#         return jsonify({'error': str(e)}), 500
+    
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
+        # 🔒 Safety check (SAB SE PEHLE)
+        if stacked_model is None or tfidf is None:
+            return jsonify({"error": "Model not loaded"}), 500
+
         # Get resume and job description from request
         data = request.json
-        resume_text = data['resume']
-        job_desc_text = data['job_description']
+        resume_text = data.get('resume')
+        job_desc_text = data.get('job_description')
+
+        if not resume_text or not job_desc_text:
+            return jsonify({"error": "Missing resume or job_description"}), 400
         
         # Preprocess texts
         cleaned_resume = preprocess_text(resume_text)
@@ -155,19 +224,21 @@ def predict():
         similarity = cosine_similarity(vectors[0], vectors[1])[0][0]
        
         # Prepare input for model
-        x_input = np.hstack((vectors[0].toarray(), np.array(similarity).reshape(1, -1)))
+        x_input = np.hstack((
+            vectors[0].toarray(),
+            np.array([[similarity]])
+        ))
         
         # Predict
         predicted_score = stacked_model.predict(x_input)[0]
         
         return jsonify({
-            'matched_score': float(predicted_score*100),
-            'similarity_score': float(similarity)
+            "matched_score": float(predicted_score * 100),
+            "similarity_score": float(similarity)
         })
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/recommend', methods=['POST'])
