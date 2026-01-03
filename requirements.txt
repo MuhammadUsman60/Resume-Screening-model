@@ -1,9 +1,9 @@
 flask
 flask-cors
-scikit-learn
-nltk
 numpy
-joblib
 pandas
+scikit-learn
+joblib
+nltk
 xgboost
-PyMuPDF==1.23.9
+PyMuPDF
